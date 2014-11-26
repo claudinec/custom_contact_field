@@ -1,0 +1,146 @@
+<?php
+/**
+ * @file
+ * Custom Contact Field module.
+ *
+ * Define a field containing an email address as a Contact field,
+ * and send email to this address.
+ */
+
+/**
+ * Implements hook_node_view().
+ */
+function custom_contact_field_node_view($node, $view_mode, $langcode) {
+  if ($node->type == 'org') {
+    $content['contact_link'] = array(
+      'value' => l('Send email to this organisation', 'contact-org/' . $nid)
+    );
+  }
+}
+
+/**
+ * Implements hook_menu().
+ */
+function custom_contact_field_menu() {
+  $items['contact-org/%'] = array(
+      'page callback' => '_custom_contact_field_contact_form',
+      'page arguments' => array(1),
+      'access arguments' => array('access content'),
+      'title' => 'Contact an Organisation'
+    );
+  return $items;
+}
+
+/**
+ * Function to create custom contact form.
+ *
+ * @param int $entity_id
+ *   ID of the entity containing this field.
+ *
+ * @param array $options
+ *   Optional additional variables.
+ */
+function _custom_contact_field_contact_form($entity_id, $options) {
+  $org_query = db_query('SELECT * FROM node WHERE nid = :nid',
+    array(':nid' => $org_id));
+  $org = $org_query->fetchObject();
+  $org_name = $org->title;
+
+  $preamble = "<p>Thank you for your interest in " . $org_name . ". Your email will be sent directly to the organisation, so you should hear back from them soon.</p>";
+  $form['preamble'] = array(
+    '#markup' => $preamble
+  );
+
+  $email_subject = "Website Enquiry to " . $org_name;
+  $email_query = db_query('SELECT e.field_email_email FROM field_data_field_org_contact as c
+    JOIN field_data_field_email as e ON c.field_org_contact_value = e.entity_id
+    JOIN node as n ON c.entity_id = n.nid
+    WHERE n.nid = :nid',
+    array(':nid' => $org_id));
+  $email_result = $email_query->fetchObject();
+  $to_email = $email_result->field_email_email;
+
+  $form['contact_type'] = array(
+    '#title' => t('Type of contact'),
+    '#type' => 'select',
+    '#options' => array(
+      'I am interested in becoming a volunteer',
+      'I would like more information'
+    )
+  );
+  $form['from_name'] = array(
+    '#title' => t('Your name'),
+    '#type' => 'textfield',
+    '#size' => '60'
+  );
+  $form['from_email'] = array(
+    '#title' => t('Your email address'),
+    '#type' => 'textfield',
+    '#size' => '20'
+  );
+  $form['message'] = array(
+    '#title' => t('Message'),
+    '#type' => 'textarea'
+  );
+  $form['submit'] = array(
+    '#type' => 'submit',
+    '#value' => t('Send')
+  );
+
+  return $form;
+}
+
+/**
+ * Validate sender email address.
+ */
+function _custom_contact_field_valid_email($form, &$form_state) {
+  $email = $form['from_email'];
+  if (!valid_email_address($email)) {
+    form_set_error($message = $email . ' is not a valid email address.');
+  }
+}
+
+/**
+ * Form submit handler. Prepare and send mail.
+ */
+function _custom_contact_field_contact_form_submit($form, &$form_state) {
+  $sender_string = $form['sender_name']['#value'] . ' <' . $form['sender_email']['#value'] . '>';
+  $subject =  "Website Enquiry to " . $form['org_name']['#value'] . ": " . $form['contact_type']['#value'];
+  $message = drupal_mail(
+    'custom_contact_field', 'notice', $form['to_email']['#value'], 'und',
+    array('body' => $form['body']['#value'], 'subject' => $subject),
+    $sender_string, TRUE
+  );
+  if ($message['result'] == TRUE) {
+    $org_name = $form['org_name']['#value'];
+    drupal_set_message(t('Your message was sent to @org_name',
+      array('@org_name' => $org_name)), 'status', FALSE);
+
+    watchdog('custom_contact_field', 'Email sent to organisation @org_name &lt;@recipient&gt; from @sender, contact type @contact_type.',
+      array(
+        '@org_name' => $org_name,
+        '@recipient' => $form['to_email']['#value'],
+        '@sender' => $sender_string,
+        '@contact_type' => $form['contact_type']['#value']
+      ),
+      WATCHDOG_NOTICE, 'link');
+  }
+}
+
+/**
+ * Implements hook_mail().
+ */
+function custom_contact_field_mail($key, &$message, $params) {
+  if (isset($params['from'])) {
+    $message['from'] = $params['from'];
+  }
+  if (isset($params['to'])) {
+    $message['to'] = $params['to'];
+  }
+  if (isset($params['subject'])) {
+    $message['subject'] = $params['subject'];
+  }
+  if (isset($params['body'])) {
+    $message['body'][] = $params['body'];
+  }
+}

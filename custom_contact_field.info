@@ -1,0 +1,6 @@
+name = Custom Contact Field
+description = Define a field containing an email address as a Contact field.
+core = 7.x
+package = Other
+version = 7.x-0.1
+project = custom_contact_field
