@@ -1,4 +1,4 @@
-custom_contact_field
+Custom Contact Field
 ====================
 
 Sample Drupal module: Define a field containing an email address as a Contact field and send email to this address.
